@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env zsh
 
-script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+script_dir=${0:A:h}
 echo "script_dir: ${script_dir}"
 
 milkv_debug=0
@@ -20,7 +20,7 @@ function choose_target() {
 	echo "Select Product:"
 	print_info "1. Duo (CV1800B)"
 	print_info "2. Duo256M (SG2002) or DuoS (SG2000)"
-	read -p "Which would you like: " chip_index
+	read "chip_index?Which would you like: "
 
 	if [ "${chip_index}" -eq 1 ]; then
 		milkv_chip="CV180X"
@@ -31,7 +31,7 @@ function choose_target() {
 		echo "Select Arch:"
 		print_info "1. ARM64"
 		print_info "2. RISCV64"
-		read -p "Which would you like: " arch_index
+		read "arch_index?Which would you like: "
 
 		if [ "${arch_index}" -eq 1 ]; then
 			milkv_arch="arm64"
