@@ -1,4 +1,3 @@
-
 host-tools
 host-tools/
 
@@ -19,3 +18,5 @@ ncscope.*
 
 __pycache__
 .vscode
+
+compile_commands.json

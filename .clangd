@@ -1,0 +1,11 @@
+CompileFlags:
+  Add:
+    - "-I/home/wuqingyu/Workspace/C/duo-tdl-examples/include"
+    - "-I/home/wuqingyu/Workspace/C/duo-tdl-examples/include/system"
+    - "-I/home/wuqingyu/Workspace/C/duo-tdl-examples/include/tdl"
+  Remove:
+    - "-mcpu=c906fdv"
+    - "-march=rv64imafdcv0p7xthead"
+    - "-mcmodel=medany"
+    - "-mabi=lp64d"
+    - "-mabi=*"
