@@ -6,12 +6,12 @@
 int main() {
     // Duo/Duo256M: LED = 25
     // DuoS:        LED =  0
-    int DUO_LED = 0;
+    int DUO_LED = 25;
 
     // Duo:     milkv_duo
     // Duo256M: milkv_duo256m
     // DuoS:    milkv_duos
-    if(wiringXSetup("milkv_duos", NULL) == -1) {
+    if(wiringXSetup("milkv_duo256m", NULL) == -1) {
         wiringXGC();
         return 1;
     }
