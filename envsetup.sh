@@ -113,11 +113,11 @@ else
 fi
 
 if [ "${milkv_chip}" = "CV180X" ]; then
-	sys_lib="${script_dir}/libs/system/musl_riscv64"
+	sys_lib="${script_dir}/libs/system/glibc_riscv64"
 	tdl_lib="${script_dir}/libs/tdl/cv180x_riscv64"
 elif [ "${milkv_chip}" = "CV181X" ]; then
 	if [ "${milkv_arch}" = "riscv64" ]; then
-		sys_lib="${script_dir}/libs/system/musl_riscv64"
+		sys_lib="${script_dir}/libs/system/glibc_riscv64"
 		tdl_lib="${script_dir}/libs/tdl/cv181x_riscv64"
 	elif [ "${milkv_arch}" = "arm64" ]; then
 		sys_lib="${script_dir}/libs/system/glibc_arm64"
