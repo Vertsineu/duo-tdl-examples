@@ -95,8 +95,8 @@ if [ "${milkv_arch}" = "riscv64" ]; then
 	arch_cflags="-mcpu=c906fdv -march=rv64imafdcv0p7xthead -mcmodel=medany -mabi=lp64d"
 	arch_ldflags="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"
 
-	toolchain_dir="${host_tools}/gcc/riscv64-linux-musl-x86_64"
-	export TOOLCHAIN_PREFIX=${toolchain_dir}/bin/riscv64-unknown-linux-musl-
+	toolchain_dir="${host_tools}/gcc/riscv64-linux-x86_64"
+	export TOOLCHAIN_PREFIX=${toolchain_dir}/bin/riscv64-unknown-linux-gnu-
 	toolchain_sysroot="${toolchain_dir}/sysroot"
 
 elif [ "${milkv_arch}" = "arm64" ]; then
