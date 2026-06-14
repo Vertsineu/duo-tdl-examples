@@ -1,0 +1,8 @@
+Package: @PACKAGE@
+Version: @VERSION@
+Section: libs
+Priority: optional
+Architecture: @ARCHITECTURE@
+Maintainer: local <root@localhost>
+Installed-Size: @INSTALLED_SIZE@
+Description: CVITEK/Milk-V tdl development libraries

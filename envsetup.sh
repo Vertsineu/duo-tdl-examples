@@ -13,6 +13,7 @@ echo "script_dir: ${script_dir}"
 
 milkv_debug=0
 
+milkv_product=
 milkv_chip=
 milkv_arch=
 
@@ -27,16 +28,27 @@ print_err()     { printf "\033[1;31mError: %s\033[0m\n" "$1"; }
 choose_target() {
 	echo "Select Product:"
 	print_info "1. Duo (CV1800B)"
-	print_info "2. Duo256M (SG2002) or DuoS (SG2000)"
+	print_info "2. Duo256M (SG2002)"
+	print_info "3. DuoS (SG2000)"
 	printf "Which would you like: "
-	IFS= read -r chip_index
+	IFS= read -r product_index
 
-	if [ "${chip_index}" = 1 ]; then
+	if [ "${product_index}" = 1 ]; then
+		milkv_product="duo"
 		milkv_chip="CV180X"
 		milkv_arch="riscv64"
-	elif [ "${chip_index}" = 2 ]; then
+	elif [ "${product_index}" = 2 ]; then
+		milkv_product="duo256"
 		milkv_chip="CV181X"
+	elif [ "${product_index}" = 3 ]; then
+		milkv_product="duos"
+		milkv_chip="CV181X"
+	else
+		print_err "Nothing selected for Product."
+		return 1
+	fi
 
+	if [ "${milkv_chip}" = "CV181X" ]; then
 		echo "Select Arch:"
 		print_info "1. ARM64"
 		print_info "2. RISCV64"
@@ -51,11 +63,9 @@ choose_target() {
 			print_err "Nothing selected for Arch."
 			return 1
 		fi
-	else
-		print_err "Nothing selected for Chip."
-		return 1
 	fi
 
+	print_note "PRODUCT: ${milkv_product}"
 	print_note "CHIP: ${milkv_chip}"
 	print_note "ARCH: ${milkv_arch}"
 }
@@ -144,6 +154,11 @@ export CFLAGS="${arch_cflags} ${debug_cflags} ${sysroot_cflags} -I${sys_inc} -I$
 export LDFLAGS="${arch_ldflags} -L${sys_lib} -L${tdl_lib}"
 
 export CHIP="${milkv_chip}"
+export MILKV_PRODUCT="${milkv_product}"
+export MILKV_CHIP="${milkv_chip}"
+export MILKV_ARCH="${milkv_arch}"
+export SYS_LIB="${sys_lib}"
+export TDL_LIB="${tdl_lib}"
 export COMMON_DIR="${script_dir}/common"
 
 print_info "Environment is ready."
