@@ -64,50 +64,50 @@ extern vdec_dbg vdecDbg;
 #define CVI_VDEC_ERR(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_ERR) \
-			CVI_TRACE(CVI_DBG_ERR, CVI_ID_VDEC, "%s:%d:%s()[ERR]: "msg, \
+			CVI_TRACE(CVI_DBG_ERR, CVI_ID_VDEC, "%s:%d:%s()[ERR]: " msg, \
 			__FILENAME__, __LINE__, __func__, ##__VA_ARGS__); \
-			printf("[ERR] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+			printf("[ERR] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_WARN(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_WARN) \
-			CVI_TRACE(CVI_DBG_WARN, CVI_ID_VDEC, "%s:%d:%s()[WARN]: "msg, \
+			CVI_TRACE(CVI_DBG_WARN, CVI_ID_VDEC, "%s:%d:%s()[WARN]: " msg, \
 			__FILENAME__, __LINE__, __func__, ##__VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_DISP(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_DISP) \
-			CVI_TRACE(CVI_DBG_NOTICE, CVI_ID_VDEC, "%s:%d:%s()[DISP]: "msg, \
+			CVI_TRACE(CVI_DBG_NOTICE, CVI_ID_VDEC, "%s:%d:%s()[DISP]: " msg, \
 			__FILENAME__, __LINE__, __func__, ##__VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_INFO(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_INFO) \
-			CVI_TRACE(CVI_DBG_INFO, CVI_ID_VDEC, "%s:%d:%s()[INFO]: "msg, \
+			CVI_TRACE(CVI_DBG_INFO, CVI_ID_VDEC, "%s:%d:%s()[INFO]: " msg, \
 			__FILENAME__, __LINE__, __func__, ##__VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_MEM(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_MEM) \
-			CVI_TRACE(CVI_DBG_INFO, CVI_ID_VDEC, "%s:%d:%s()[MEM]: "msg, \
+			CVI_TRACE(CVI_DBG_INFO, CVI_ID_VDEC, "%s:%d:%s()[MEM]: " msg, \
 			__FILENAME__, __LINE__, __func__, ##__VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_API(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_API) \
-			CVI_TRACE(CVI_DBG_INFO, CVI_ID_VDEC, "%s:%d:%s()[API]: "msg, \
+			CVI_TRACE(CVI_DBG_INFO, CVI_ID_VDEC, "%s:%d:%s()[API]: " msg, \
 			__FILENAME__, __LINE__, __func__, ##__VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_TRACE(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_TRACE) \
-			CVI_TRACE(CVI_DBG_DEBUG, CVI_ID_VDEC, "%s:%d:%s()[TRACE]: "msg, \
+			CVI_TRACE(CVI_DBG_DEBUG, CVI_ID_VDEC, "%s:%d:%s()[TRACE]: " msg, \
 			__FILENAME__, __LINE__, __func__, ##__VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_PERF(msg, ...)		\
 	do { \
 		if (vdecDbg.currMask & CVI_VDEC_MASK_PERF) \
-		CVI_TRACE(CVI_DBG_NOTICE, CVI_ID_VDEC, "%s:%d:%s()[PERF]: "msg, \
+		CVI_TRACE(CVI_DBG_NOTICE, CVI_ID_VDEC, "%s:%d:%s()[PERF]: " msg, \
 		__FILENAME__, __LINE__, __func__, ##__VA_ARGS__); \
 	} while (0)
 
@@ -122,42 +122,42 @@ extern vdec_dbg vdecDbg;
 #define CVI_VDEC_ERR(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_ERR) \
-		pr_err("[ERR] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+		pr_err("[ERR] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_WARN(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_WARN) \
-		pr_warn("[WARN] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+		pr_warn("[WARN] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_DISP(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_DISP) \
-		pr_notice("[DISP] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+		pr_notice("[DISP] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_INFO(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_INFO) \
-		pr_info("[INFO] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+		pr_info("[INFO] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_MEM(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_MEM) \
-		pr_info("[MEM] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+		pr_info("[MEM] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_API(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_API) \
-		pr_info("[API] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+		pr_info("[API] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_TRACE(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_TRACE) \
-		pr_debug("[TRACE] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+		pr_debug("[TRACE] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_PERF(msg, ...)		\
 	do { \
 		if (vdecDbg.currMask & CVI_VDEC_MASK_PERF) \
-		pr_notice("[PERF] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+		pr_notice("[PERF] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 
 #define CVI_TRACE_VDEC(level, fmt, ...)                                           \
@@ -167,12 +167,12 @@ extern vdec_dbg vdecDbg;
 #define CVI_VDEC_ERR(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_ERR) \
-		pr_err("[ERR] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+		pr_err("[ERR] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_WARN(msg, ...)	\
 	do {	\
 		if (vdecDbg.currMask & CVI_VDEC_MASK_WARN) \
-		pr_warn("[WARN] %s = %d, "msg, __func__, __LINE__, ## __VA_ARGS__); \
+		pr_warn("[WARN] %s = %d, " msg, __func__, __LINE__, ## __VA_ARGS__); \
 	} while (0)
 #define CVI_VDEC_DISP(msg, ...)
 #define CVI_VDEC_INFO(msg, ...)

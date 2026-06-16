@@ -4,6 +4,14 @@
 
 static void SAMPLE_TDL_RTSP_ON_CONNECT(const char *ip, void *arg) {
   printf("RTSP client connected from: %s\n", ip);
+  SAMPLE_TDL_MW_CONTEXT *pstMWContext = (SAMPLE_TDL_MW_CONTEXT *)arg;
+  if (pstMWContext != NULL) {
+    pstMWContext->bNeedIdr = CVI_TRUE;
+    CVI_S32 s32Ret = CVI_VENC_RequestIDR(pstMWContext->u32VencChn, CVI_TRUE);
+    if (s32Ret != CVI_SUCCESS) {
+      printf("CVI_VENC_RequestIDR failed with %#x\n", s32Ret);
+    }
+  }
 }
 
 static void SAMPLE_TDL_RTSP_ON_DISCONNECT(const char *ip, void *arg) {
@@ -94,6 +102,73 @@ PIC_SIZE_E SAMPLE_TDL_Get_PIC_Size(CVI_S32 width, CVI_S32 height) {
   } else {
     return PIC_BUTT;
   }
+}
+
+static CVI_BOOL SAMPLE_TDL_Pack_Has_IDR(const VENC_PACK_S *pstPack, PAYLOAD_TYPE_E enPayLoad) {
+  if (pstPack->u32Offset >= pstPack->u32Len) {
+    return CVI_FALSE;
+  }
+
+  CVI_U8 *pu8Data = pstPack->pu8Addr + pstPack->u32Offset;
+  CVI_U32 u32Len = pstPack->u32Len - pstPack->u32Offset;
+
+  if (enPayLoad == PT_H264) {
+    if (pstPack->DataType.enH264EType == H264E_NALU_IDRSLICE) {
+      return CVI_TRUE;
+    }
+    for (CVI_U32 i = 0; i < pstPack->u32DataNum && i < 8; i++) {
+      if (pstPack->stPackInfo[i].u32PackType.enH264EType == H264E_NALU_IDRSLICE) {
+        return CVI_TRUE;
+      }
+    }
+    for (CVI_U32 i = 0; i + 4 < u32Len; i++) {
+      CVI_U32 u32StartCodeLen = 0;
+      if (pu8Data[i] == 0 && pu8Data[i + 1] == 0 && pu8Data[i + 2] == 1) {
+        u32StartCodeLen = 3;
+      } else if (i + 5 < u32Len && pu8Data[i] == 0 && pu8Data[i + 1] == 0 &&
+                 pu8Data[i + 2] == 0 && pu8Data[i + 3] == 1) {
+        u32StartCodeLen = 4;
+      }
+      if (u32StartCodeLen > 0 && i + u32StartCodeLen < u32Len &&
+          (pu8Data[i + u32StartCodeLen] & 0x1f) == H264E_NALU_IDRSLICE) {
+        return CVI_TRUE;
+      }
+    }
+  } else if (enPayLoad == PT_H265) {
+    if (pstPack->DataType.enH265EType == H265E_NALU_IDRSLICE) {
+      return CVI_TRUE;
+    }
+    for (CVI_U32 i = 0; i < pstPack->u32DataNum && i < 8; i++) {
+      if (pstPack->stPackInfo[i].u32PackType.enH265EType == H265E_NALU_IDRSLICE) {
+        return CVI_TRUE;
+      }
+    }
+    for (CVI_U32 i = 0; i + 5 < u32Len; i++) {
+      CVI_U32 u32StartCodeLen = 0;
+      if (pu8Data[i] == 0 && pu8Data[i + 1] == 0 && pu8Data[i + 2] == 1) {
+        u32StartCodeLen = 3;
+      } else if (pu8Data[i] == 0 && pu8Data[i + 1] == 0 && pu8Data[i + 2] == 0 &&
+                 pu8Data[i + 3] == 1) {
+        u32StartCodeLen = 4;
+      }
+      if (u32StartCodeLen > 0 && i + u32StartCodeLen + 1 < u32Len) {
+        CVI_U8 u8NalType = (pu8Data[i + u32StartCodeLen] >> 1) & 0x3f;
+        if (u8NalType == H265E_NALU_IDRSLICE || u8NalType == 20) {
+          return CVI_TRUE;
+        }
+      }
+    }
+  }
+  return CVI_FALSE;
+}
+
+static CVI_BOOL SAMPLE_TDL_Stream_Has_IDR(const VENC_STREAM_S *pstStream, PAYLOAD_TYPE_E enPayLoad) {
+  for (CVI_U32 i = 0; i < pstStream->u32PackCount; i++) {
+    if (SAMPLE_TDL_Pack_Has_IDR(&pstStream->pstPack[i], enPayLoad)) {
+      return CVI_TRUE;
+    }
+  }
+  return CVI_FALSE;
 }
 
 CVI_S32 SAMPLE_TDL_Init_WM(SAMPLE_TDL_MW_CONFIG_S *pstMWConfig,
@@ -299,6 +374,8 @@ CVI_S32 SAMPLE_TDL_Init_WM(SAMPLE_TDL_MW_CONFIG_S *pstMWConfig,
     printf("Venc Start failed for %#x!\n", s32Ret);
     goto venc_start_error;
   }
+  pstMWContext->bNeedIdr = CVI_TRUE;
+  CVI_VENC_RequestIDR(pstMWContext->u32VencChn, CVI_TRUE);
 
   // RTSP
   printf("Initialize RTSP\n");
@@ -328,10 +405,11 @@ CVI_S32 SAMPLE_TDL_Init_WM(SAMPLE_TDL_MW_CONFIG_S *pstMWConfig,
   listener.onConnect = pstMWConfig->stRTSPConfig.Lisener.onConnect != NULL
                            ? pstMWConfig->stRTSPConfig.Lisener.onConnect
                            : SAMPLE_TDL_RTSP_ON_CONNECT;
-  listener.argConn = pstMWContext->pstRtspContext;
+  listener.argConn = pstMWContext;
   listener.onDisconnect = pstMWConfig->stRTSPConfig.Lisener.onDisconnect != NULL
                               ? pstMWConfig->stRTSPConfig.Lisener.onDisconnect
                               : SAMPLE_TDL_RTSP_ON_DISCONNECT;
+  listener.argDisconn = pstMWContext;
   CVI_RTSP_SetListener(pstMWContext->pstRtspContext, &listener);
 
   if (0 > CVI_RTSP_Start(pstMWContext->pstRtspContext)) {
@@ -407,6 +485,24 @@ CVI_S32 SAMPLE_TDL_Send_Frame_RTSP(VIDEO_FRAME_INFO_S *stVencFrame,
   VENC_PACK_S *ppack;
   CVI_RTSP_DATA data = {0};
   memset(&data, 0, sizeof(CVI_RTSP_DATA));
+
+  PAYLOAD_TYPE_E enPayLoad = stVencChnAttr.stVencAttr.enType;
+  if (pstMWContext->bNeedIdr) {
+    if (!SAMPLE_TDL_Stream_Has_IDR(&stStream, enPayLoad)) {
+      CVI_VENC_ReleaseStream(VencChn, &stStream);
+      free(stStream.pstPack);
+      stStream.pstPack = NULL;
+      return CVI_SUCCESS;
+    }
+    pstMWContext->bNeedIdr = CVI_FALSE;
+  }
+
+  if (stStream.u32PackCount > CVI_RTSP_DATA_MAX_BLOCK) {
+    printf("Too many VENC packs for RTSP frame: %u > %u\n", stStream.u32PackCount,
+           CVI_RTSP_DATA_MAX_BLOCK);
+    s32Ret = CVI_FAILURE;
+    goto send_failed;
+  }
 
   data.blockCnt = stStream.u32PackCount;
   for (unsigned int i = 0; i < stStream.u32PackCount; i++) {

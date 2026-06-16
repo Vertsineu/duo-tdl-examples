@@ -8,11 +8,10 @@
 #include <sample_comm.h>
 
 #include <pthread.h>
-#include <signal.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 static volatile bool bExit = false;
 
@@ -30,19 +29,19 @@ static void SampleHandleSig(CVI_S32 signo) {
 }
 
 static CVI_S32 parse_u32(const char *text, CVI_U32 *value) {
-  char *end = NULL;
+  char *end = nullptr;
   long parsed = strtol(text, &end, 10);
   if (end == text || *end != '\0' || parsed <= 0) {
     return CVI_FAILURE;
   }
-  *value = (CVI_U32)parsed;
+  *value = static_cast<CVI_U32>(parsed);
   return CVI_SUCCESS;
 }
 
 static void *run_rtsp(void *args) {
   printf("Enter RTSP thread\n");
 
-  SAMPLE_VI_RTSP_THREAD_ARG_S *pstArgs = (SAMPLE_VI_RTSP_THREAD_ARG_S *)args;
+  SAMPLE_VI_RTSP_THREAD_ARG_S *pstArgs = static_cast<SAMPLE_VI_RTSP_THREAD_ARG_S *>(args);
   VIDEO_FRAME_INFO_S stFrame;
 
   while (bExit == false) {
@@ -64,7 +63,7 @@ static void *run_rtsp(void *args) {
   }
 
   printf("Exit RTSP thread\n");
-  pthread_exit(NULL);
+  pthread_exit(nullptr);
 }
 
 static CVI_S32 get_middleware_config(SAMPLE_TDL_MW_CONFIG_S *pstMWConfig, SIZE_S stVencSize,
@@ -132,10 +131,9 @@ static CVI_S32 get_middleware_config(SAMPLE_TDL_MW_CONFIG_S *pstMWConfig, SIZE_S
 }
 
 int main(int argc, char *argv[]) {
-  SIZE_S stVencSize = {
-      .u32Width = 1280,
-      .u32Height = 720,
-  };
+  SIZE_S stVencSize = {};
+  stVencSize.u32Width = 1280;
+  stVencSize.u32Height = 720;
   const char *codec = "h264";
 
   if (argc != 1 && argc != 3 && argc != 4) {
@@ -170,14 +168,14 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, SampleHandleSig);
   signal(SIGTERM, SampleHandleSig);
 
-  SAMPLE_TDL_MW_CONFIG_S stMWConfig = {0};
+  SAMPLE_TDL_MW_CONFIG_S stMWConfig = {};
   CVI_S32 s32Ret = get_middleware_config(&stMWConfig, stVencSize, codec);
   if (s32Ret != CVI_SUCCESS) {
     printf("get middleware configuration failed! ret=%#x\n", s32Ret);
     return CVI_FAILURE;
   }
 
-  SAMPLE_TDL_MW_CONTEXT stMWContext = {0};
+  SAMPLE_TDL_MW_CONTEXT stMWContext = {};
   s32Ret = SAMPLE_TDL_Init_WM(&stMWConfig, &stMWContext);
   if (s32Ret != CVI_SUCCESS) {
     printf("init middleware failed! ret=%#x\n", s32Ret);
@@ -187,12 +185,11 @@ int main(int argc, char *argv[]) {
   printf("RTSP stream is ready: rtsp://<duo-ip>/%s\n", codec);
 
   pthread_t stRtspThread;
-  SAMPLE_VI_RTSP_THREAD_ARG_S args = {
-      .pstMWContext = &stMWContext,
-  };
+  SAMPLE_VI_RTSP_THREAD_ARG_S args = {};
+  args.pstMWContext = &stMWContext;
 
-  pthread_create(&stRtspThread, NULL, run_rtsp, &args);
-  pthread_join(stRtspThread, NULL);
+  pthread_create(&stRtspThread, nullptr, run_rtsp, &args);
+  pthread_join(stRtspThread, nullptr);
 
   SAMPLE_TDL_Destroy_MW(&stMWContext);
   return CVI_SUCCESS;

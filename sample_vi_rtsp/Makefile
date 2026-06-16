@@ -8,6 +8,10 @@ ifeq (,$(TOOLCHAIN_PREFIX))
 $(error TOOLCHAIN_PREFIX is not set)
 endif
 
+ifeq ($(origin CXX), default)
+CXX = $(TOOLCHAIN_PREFIX)g++
+endif
+
 ifeq (,$(CFLAGS))
 $(error CFLAGS is not set)
 endif
@@ -24,7 +28,10 @@ else
 $(error CHIP is not set)
 endif
 
-CFLAGS += -std=gnu11 -Wno-pointer-to-int-cast -fsigned-char -Wno-format-truncation -fdiagnostics-color=always -s -lpthread -latomic
+SAMPLE_FLAGS = -Wno-pointer-to-int-cast -fsigned-char -Wno-format-truncation -fdiagnostics-color=always -s -lpthread -latomic
+
+CFLAGS += -std=gnu11 $(SAMPLE_FLAGS)
+CXXFLAGS += $(filter-out -std=gnu11 -Wno-pointer-to-int-cast,$(CFLAGS)) -std=gnu++11
 
 LDFLAGS += -lini -lsns_full -lsample -lisp -lvdec -lvenc -lawb -lae -laf -lcvi_bin -lcvi_bin_isp -lmisc -lisp_algo -lsys -lvi -lvo -lvpss -lrgn -lgdc
 LDFLAGS += -lcvi_rtsp
@@ -32,14 +39,20 @@ LDFLAGS += -lcvi_rtsp
 COMMON_SRC = $(COMMON_DIR)/middleware_utils.c
 COMMON_OBJ = $(COMMON_SRC:.c=.o)
 
-SOURCE = $(wildcard *.c)
-OBJS = $(patsubst %.c,%.o,$(SOURCE))
+C_SOURCE = $(wildcard *.c)
+C_OBJS = $(patsubst %.c,%.o,$(C_SOURCE))
+CXX_SOURCE = $(wildcard *.cpp)
+CXX_OBJS = $(patsubst %.cpp,%.o,$(CXX_SOURCE))
+OBJS = $(C_OBJS) $(CXX_OBJS)
 
 $(TARGET): $(OBJS) $(COMMON_OBJ)
-	$(CC) $(CFLAGS) -o $@ $(COMMON_OBJ) $(OBJS) $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o $@ $(COMMON_OBJ) $(OBJS) $(LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -o $@ -c $<
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -o $@ -c $<
 
 .PHONY: clean
 clean:
