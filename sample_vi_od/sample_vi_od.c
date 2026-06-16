@@ -9,7 +9,8 @@
 #include <cvi_comm.h>
 #include <rtsp.h>
 #include <sample_comm.h>
-#include "cvi_tdl.h"
+#include "tdl_sdk.h"
+#include "tdl_v2_draw.h"
 
 #include <pthread.h>
 #include <signal.h>
@@ -20,7 +21,7 @@
 
 static volatile bool bExit = false;
 
-static cvtdl_object_t g_stObjMeta = {0};
+static TDLObject g_stObjMeta = {0};
 
 MUTEXAUTOLOCK_INIT(ResultMutex);
 
@@ -30,8 +31,7 @@ MUTEXAUTOLOCK_INIT(ResultMutex);
  */
 typedef struct {
   SAMPLE_TDL_MW_CONTEXT *pstMWContext;
-  cvitdl_service_handle_t stServiceHandle;
-  CVI_TDL_SUPPORTED_MODEL_E enOdModelId;
+  TDLModel enOdModelId;
 } SAMPLE_TDL_VENC_THREAD_ARG_S;
 
 /**
@@ -40,8 +40,8 @@ typedef struct {
  */
 typedef struct {
   ODInferenceFunc inference_func;
-  CVI_TDL_SUPPORTED_MODEL_E enOdModelId;
-  cvitdl_handle_t stTDLHandle;
+  TDLModel enOdModelId;
+  TDLHandle stTDLHandle;
 } SAMPLE_TDL_TDL_THREAD_ARG_S;
 
 void *run_venc(void *args) {
@@ -49,7 +49,7 @@ void *run_venc(void *args) {
   SAMPLE_TDL_VENC_THREAD_ARG_S *pstArgs = (SAMPLE_TDL_VENC_THREAD_ARG_S *)args;
   VIDEO_FRAME_INFO_S stFrame;
   CVI_S32 s32Ret;
-  cvtdl_object_t stObjMeta = {0};
+  TDLObject stObjMeta = {0};
 
   while (bExit == false) {
     s32Ret = CVI_VPSS_GetChnFrame(0, VPSS_CHN0, &stFrame, 2000);
@@ -61,34 +61,33 @@ void *run_venc(void *args) {
     {
       // Get detection result from global
       MutexAutoLock(ResultMutex, lock);
-      CVI_TDL_CopyObjectMeta(&g_stObjMeta, &stObjMeta);
+      TDL_CopyObjectMeta(&g_stObjMeta, &stObjMeta);
     }
 
-    if(pstArgs->enOdModelId == CVI_TDL_SUPPORTED_MODEL_PERSON_PETS_DETECTION) {
+    if (pstArgs->enOdModelId == TDL_MODEL_YOLOV8N_DET_PET_PERSON) {
       for (uint32_t oid = 0; oid < stObjMeta.size; oid++) {
         char name[256];
-        if (stObjMeta.info[oid].classes == 0) {
-          sprintf(name, "cat: %.2f", stObjMeta.info[oid].bbox.score);
+        if (stObjMeta.info[oid].class_id == 0) {
+          sprintf(name, "cat: %.2f", stObjMeta.info[oid].score);
         }
-        if (stObjMeta.info[oid].classes == 1) {
-          sprintf(name, "dog: %.2f", stObjMeta.info[oid].bbox.score);
+        if (stObjMeta.info[oid].class_id == 1) {
+          sprintf(name, "dog: %.2f", stObjMeta.info[oid].score);
         }
-        if (stObjMeta.info[oid].classes == 2) {
-          sprintf(name, "person: %.2f", stObjMeta.info[oid].bbox.score);
+        if (stObjMeta.info[oid].class_id == 2) {
+          sprintf(name, "person: %.2f", stObjMeta.info[oid].score);
         }
         memcpy(stObjMeta.info[oid].name, name, sizeof(stObjMeta.info[oid].name));
       }
     } else {
       for (uint32_t oid = 0; oid < stObjMeta.size; oid++) {
         char name[256];
-        sprintf(name, "%s: %.2f", stObjMeta.info[oid].name, stObjMeta.info[oid].bbox.score);
+        sprintf(name, "class:%d %.2f", stObjMeta.info[oid].class_id, stObjMeta.info[oid].score);
         memcpy(stObjMeta.info[oid].name, name, sizeof(stObjMeta.info[oid].name));
       }
     }
 
-    s32Ret = CVI_TDL_Service_ObjectDrawRect(pstArgs->stServiceHandle, &stObjMeta, &stFrame, true,
-                                            CVI_TDL_Service_GetDefaultBrush());
-    if (s32Ret != CVI_TDL_SUCCESS) {
+    s32Ret = SAMPLE_TDL_DrawObjectRect(&stObjMeta, &stFrame, true, SAMPLE_TDL_DefaultBrush());
+    if (s32Ret != CVI_SUCCESS) {
       CVI_VPSS_ReleaseChnFrame(0, 0, &stFrame);
       printf("Draw fame fail!, ret=%x\n", s32Ret);
       goto error;
@@ -96,7 +95,8 @@ void *run_venc(void *args) {
 
     s32Ret = SAMPLE_TDL_Send_Frame_RTSP(&stFrame, pstArgs->pstMWContext);
   error:
-    CVI_TDL_Free(&stObjMeta);
+    TDL_ReleaseObjectMeta(&stObjMeta);
+    memset(&stObjMeta, 0, sizeof(TDLObject));
     CVI_VPSS_ReleaseChnFrame(0, 0, &stFrame);
     if (s32Ret != CVI_SUCCESS) {
       bExit = true;
@@ -110,7 +110,7 @@ void *run_tdl_thread(void *args) {
   printf("Enter TDL thread\n");
   SAMPLE_TDL_TDL_THREAD_ARG_S *pstTDLArgs = (SAMPLE_TDL_TDL_THREAD_ARG_S *)args;
   VIDEO_FRAME_INFO_S stFrame;
-  cvtdl_object_t stObjMeta = {0};
+  TDLObject stObjMeta = {0};
 
   CVI_S32 s32Ret;
   uint32_t counter = 0;
@@ -124,24 +124,31 @@ void *run_tdl_thread(void *args) {
 
     struct timeval t0, t1;
     gettimeofday(&t0, NULL);
-    s32Ret = pstTDLArgs->inference_func(pstTDLArgs->stTDLHandle, &stFrame, pstTDLArgs->enOdModelId,
+    TDLImage image = TDL_WrapFrame(&stFrame, false);
+    if (image == NULL) {
+      s32Ret = CVI_FAILURE;
+      printf("TDL_WrapFrame failed\n");
+      goto inf_error;
+    }
+    s32Ret = pstTDLArgs->inference_func(pstTDLArgs->stTDLHandle, pstTDLArgs->enOdModelId, image,
                                         &stObjMeta);
+    TDL_DestroyImage(image);
     gettimeofday(&t1, NULL);
 
-    if (s32Ret != CVI_TDL_SUCCESS) {
+    if (s32Ret != CVI_SUCCESS) {
       printf("inference failed!, ret=%x\n", s32Ret);
       goto inf_error;
     }
 
-    if(pstTDLArgs->enOdModelId == CVI_TDL_SUPPORTED_MODEL_PERSON_PETS_DETECTION) {
+    if (pstTDLArgs->enOdModelId == TDL_MODEL_YOLOV8N_DET_PET_PERSON) {
       uint32_t obj_id;
       for (uint32_t oid = 0; oid < stObjMeta.size; oid++) {
-        obj_id = stObjMeta.info[oid].classes;
+        obj_id = stObjMeta.info[oid].class_id;
         printf("%-7s %.2f %.2f %.2f %.2f %d %.2f\n",
                 obj_id == 0 ? "cat:" : (obj_id == 1 ? "dog:" : (obj_id == 2 ? "person:" : "")),
-                stObjMeta.info[oid].bbox.x1, stObjMeta.info[oid].bbox.y1,
-                stObjMeta.info[oid].bbox.x2, stObjMeta.info[oid].bbox.y2,
-                stObjMeta.info[oid].classes, stObjMeta.info[oid].bbox.score);
+                stObjMeta.info[oid].box.x1, stObjMeta.info[oid].box.y1,
+                stObjMeta.info[oid].box.x2, stObjMeta.info[oid].box.y2,
+                stObjMeta.info[oid].class_id, stObjMeta.info[oid].score);
       }
     } else {
       unsigned long execution_time = ((t1.tv_sec - t0.tv_sec) * 1000000 + t1.tv_usec - t0.tv_usec);
@@ -153,13 +160,14 @@ void *run_tdl_thread(void *args) {
     {
       // Copy object detection results to global.
       MutexAutoLock(ResultMutex, lock);
-      CVI_TDL_CopyObjectMeta(&stObjMeta, &g_stObjMeta);
+      TDL_CopyObjectMeta(&stObjMeta, &g_stObjMeta);
     }
 
   inf_error:
     CVI_VPSS_ReleaseChnFrame(0, 1, &stFrame);
   get_frame_failed:
-    CVI_TDL_Free(&stObjMeta);
+    TDL_ReleaseObjectMeta(&stObjMeta);
+    memset(&stObjMeta, 0, sizeof(TDLObject));
     if (s32Ret != CVI_SUCCESS) {
       bExit = true;
     }
@@ -258,8 +266,7 @@ CVI_S32 get_middleware_config(SAMPLE_TDL_MW_CONFIG_S *pstMWConfig) {
   pstMWConfig->stVBPoolConfig.astVBPoolSetup[2].u32Height = 768;
   pstMWConfig->stVBPoolConfig.astVBPoolSetup[2].u32Width = 1024;
 #endif
-  // Don't bind with VPSS here, TDL SDK would bind this pool automatically when user assign this
-  // pool through CVI_TDL_SetVBPool.
+  // Keep one extra pool for preprocessing buffers used by the v2 TDL SDK.
   pstMWConfig->stVBPoolConfig.astVBPoolSetup[2].bBind = false;
 
   // VPSS configurations
@@ -322,12 +329,12 @@ int main(int argc, char *argv[]) {
     printf("Usage: %s MODEL_NAME MODEL_PATH [THRESHOLD]\n\n", argv[0]);
     printf("MODEL_NAME:\n"
            "\tmobiledetv2-person-vehicle  Person and vehicle detection (mobiledetv2)\n"
-           "\tmobiledetv2-person-pets     Person, cat and dog detection (mobiledetv2)\n"
            "\tmobiledetv2-coco80          Coco 80 objects detection (mobiledetv2)\n"
            "\tmobiledetv2-vehicle         Vehicle detection (mobiledetv2)\n"
            "\tmobiledetv2-pedestrian      Pedestrian detection (mobiledetv2)\n"
            "\tyolov8-person-pets          Person, cat and dog detection (yolov8)\n"
-           "\tyolov3\n"
+           "\tyolov8n-det-person-vehicle  Person and vehicle detection (yolov8n)\n"
+           "\tyolov8-coco80\n"
            "\tyolox\n\n");
     printf("MODEL_PATH: cvimodel path\n\n");
     printf("THRESHOLD: (optional) threshold for detection model (default: 0.5)\n\n");
@@ -360,31 +367,24 @@ int main(int argc, char *argv[]) {
   // Step 2: Create and setup TDL SDK
   ///////////////////////////////////////////////////
 
-  // Create TDL handle and assign VPSS Grp1 Device 0 to TDL SDK. VPSS Grp1 is created
-  // during initialization of TDL SDK.
-  cvitdl_handle_t stTDLHandle = NULL;
-  GOTO_IF_FAILED(CVI_TDL_CreateHandle2(&stTDLHandle, 1, 0), s32Ret, create_tdl_fail);
-
-  // Assign VBPool ID 2 to the first VPSS in TDL SDK.
-  GOTO_IF_FAILED(CVI_TDL_SetVBPool(stTDLHandle, 0, 2), s32Ret, create_service_fail);
-
-  CVI_TDL_SetVpssTimeout(stTDLHandle, 1000);
-
-  cvitdl_service_handle_t stServiceHandle = NULL;
-  GOTO_IF_FAILED(CVI_TDL_Service_CreateHandle(&stServiceHandle, stTDLHandle), s32Ret,
-                 create_service_fail);
+  TDLHandle stTDLHandle = TDL_CreateHandle(0);
+  if (stTDLHandle == NULL) {
+    s32Ret = CVI_FAILURE;
+    goto create_tdl_fail;
+  }
   // Step 3: Open and setup TDL models
   ///////////////////////////////////////////////////
 
   // Get inference function pointer and model id of object deteciton according to model name.
   ODInferenceFunc inference_func;
-  CVI_TDL_SUPPORTED_MODEL_E enOdModelId;
-  if (get_od_model_info(argv[1], &enOdModelId, &inference_func) == CVI_TDL_FAILURE) {
+  TDLModel enOdModelId = TDL_MODEL_INVALID;
+  if (get_od_model_info(argv[1], &enOdModelId, &inference_func) != CVI_SUCCESS) {
     printf("unsupported model: %s\n", argv[1]);
-    return -1;
+    s32Ret = CVI_FAILURE;
+    goto setup_tdl_fail;
   }
 
-  GOTO_IF_FAILED(CVI_TDL_OpenModel(stTDLHandle, enOdModelId, argv[2]), s32Ret, setup_tdl_fail);
+  GOTO_IF_FAILED(TDL_OpenModel(stTDLHandle, enOdModelId, argv[2], NULL), s32Ret, setup_tdl_fail);
 
   if (argc == 4) {
     float fThreshold = atof(argv[3]);
@@ -395,13 +395,9 @@ int main(int argc, char *argv[]) {
     } else {
       printf("set threshold to %f\n", fThreshold);
     }
-    GOTO_IF_FAILED(CVI_TDL_SetModelThreshold(stTDLHandle, enOdModelId, fThreshold), s32Ret,
+    GOTO_IF_FAILED(TDL_SetModelThreshold(stTDLHandle, enOdModelId, fThreshold), s32Ret,
                    setup_tdl_fail);
   }
-
-  // Select which classes we want to focus.
-  GOTO_IF_FAILED(CVI_TDL_SelectDetectClass(stTDLHandle, enOdModelId, 1, CVI_TDL_DET_TYPE_PERSON),
-                 s32Ret, setup_tdl_fail);
 
   // Step 4: Run models in thread.
   ///////////////////////////////////////////////////
@@ -409,7 +405,6 @@ int main(int argc, char *argv[]) {
   pthread_t stVencThread, stTDLThread;
   SAMPLE_TDL_VENC_THREAD_ARG_S venc_args = {
       .pstMWContext = &stMWContext,
-      .stServiceHandle = stServiceHandle,
       .enOdModelId = enOdModelId,
   };
 
@@ -429,9 +424,8 @@ int main(int argc, char *argv[]) {
   pthread_join(stTDLThread, NULL);
 
 setup_tdl_fail:
-  CVI_TDL_Service_DestroyHandle(stServiceHandle);
-create_service_fail:
-  CVI_TDL_DestroyHandle(stTDLHandle);
+  TDL_CloseModel(stTDLHandle, enOdModelId);
+  TDL_DestroyHandle(stTDLHandle);
 create_tdl_fail:
   SAMPLE_TDL_Destroy_MW(&stMWContext);
 

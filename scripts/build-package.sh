@@ -20,9 +20,6 @@ fi
 : "${VERSION_PREFIX:?VERSION_PREFIX is required}"
 : "${SYSTEM_LIB_RISCV64:?SYSTEM_LIB_RISCV64 is required}"
 : "${SYSTEM_LIB_ARM64:?SYSTEM_LIB_ARM64 is required}"
-: "${TDL_LIB_CV180X_RISCV64:?TDL_LIB_CV180X_RISCV64 is required}"
-: "${TDL_LIB_CV181X_RISCV64:?TDL_LIB_CV181X_RISCV64 is required}"
-: "${TDL_LIB_CV181X_ARM64:?TDL_LIB_CV181X_ARM64 is required}"
 
 copy_lib() {
 	local src="$1"
@@ -96,17 +93,11 @@ case "${target_arch}" in
 		architecture="riscv64"
 		multiarch_triplet="riscv64-linux-gnu"
 		source_dir="${repo_root}/${SYSTEM_LIB_RISCV64}"
-		if [ "${target_chip}" = "CV180X" ]; then
-			tdl_source_dir="${repo_root}/${TDL_LIB_CV180X_RISCV64}"
-		else
-			tdl_source_dir="${repo_root}/${TDL_LIB_CV181X_RISCV64}"
-		fi
 		;;
 	arm64)
 		architecture="arm64"
 		multiarch_triplet="aarch64-linux-gnu"
 		source_dir="${repo_root}/${SYSTEM_LIB_ARM64}"
-		tdl_source_dir="${repo_root}/${TDL_LIB_CV181X_ARM64}"
 		;;
 	"")
 		echo "Missing target architecture. Run 'source envsetup.sh' before building the package." >&2
@@ -134,18 +125,11 @@ fi
 
 package_root="${work_dir}/${package_name}-${architecture}/root"
 debian_root="${package_root}/DEBIAN"
-system_install_root="${package_root}/mnt/system/lib"
-system_usr_install_root="${package_root}/mnt/system/usr/lib"
 usr_install_root="${package_root}/usr/lib/${multiarch_triplet}"
 deb_file="${dist_dir}/${package_name}_${package_version}_${architecture}.deb"
 
 if [ ! -d "${source_dir}" ]; then
 	echo "Missing source directory: ${source_dir}" >&2
-	exit 1
-fi
-
-if [ ! -d "${tdl_source_dir}" ]; then
-	echo "Missing TDL source directory: ${tdl_source_dir}" >&2
 	exit 1
 fi
 
@@ -155,49 +139,18 @@ if [ ! -f "${debian_config_dir}/control.in" ]; then
 fi
 
 rm -rf "${package_root}"
-install -d "${debian_root}" "${system_install_root}" "${system_usr_install_root}" "${usr_install_root}" "${dist_dir}"
+install -d "${debian_root}" "${usr_install_root}" "${dist_dir}"
 
-system_lib_count=0
-while IFS= read -r -d '' lib; do
-	lib_name="$(basename "${lib}")"
-	case "${lib_name}" in
-		libini.so|libwiringx.so)
-			copy_lib "${lib}" "${usr_install_root}"
-			;;
-		*)
-			copy_lib "${lib}" "${system_install_root}"
-			;;
-	esac
-	system_lib_count=$((system_lib_count + 1))
-done < <(find "${source_dir}" -maxdepth 1 -type f -name '*.so*' -print0 | sort -z)
-
-if [ "${system_lib_count}" -eq 0 ]; then
-	echo "No shared libraries found in: ${source_dir}" >&2
-	exit 1
-fi
-
-tdl_lib_count=0
-while IFS= read -r -d '' lib; do
-	lib_name="$(basename "${lib}")"
-	case "${lib_name}" in
-		libcvi_rtsp.so*|libopencv*)
-			copy_lib "${lib}" "${system_usr_install_root}"
-			;;
-		libcvi*|libcv*)
-			copy_lib "${lib}" "${system_install_root}"
-			;;
-		*)
-			echo "Unsupported TDL library name: ${lib_name}" >&2
-			exit 1
-			;;
-	esac
-	tdl_lib_count=$((tdl_lib_count + 1))
-done < <(find "${tdl_source_dir}" -maxdepth 1 \( -type f -o -type l \) -name '*.so*' -print0 | sort -z)
-
-if [ "${tdl_lib_count}" -eq 0 ]; then
-	echo "No TDL shared libraries found in: ${tdl_source_dir}" >&2
-	exit 1
-fi
+usr_lib_count=0
+for lib_name in libini.so libwiringx.so; do
+	lib="${source_dir}/${lib_name}"
+	if [ ! -f "${lib}" ]; then
+		echo "Missing required library: ${lib}" >&2
+		exit 1
+	fi
+	copy_lib "${lib}" "${usr_install_root}"
+	usr_lib_count=$((usr_lib_count + 1))
+done
 
 for maint_script in postinst postrm preinst prerm; do
 	if [ -f "${debian_config_dir}/${maint_script}" ]; then
@@ -226,5 +179,4 @@ dpkg-deb --root-owner-group --build "${package_root}" "${deb_file}"
 
 echo "Built ${deb_file}"
 echo "Target ${target_product}/${target_chip}/${target_arch}"
-echo "Packaged ${system_lib_count} system libraries from ${source_dir}"
-echo "Packaged ${tdl_lib_count} TDL libraries from ${tdl_source_dir}"
+echo "Packaged ${usr_lib_count} libraries to /usr/lib/${multiarch_triplet} from ${source_dir}"

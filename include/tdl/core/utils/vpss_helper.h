@@ -3,9 +3,6 @@
 #include <cvi_vb.h>
 #include <cvi_vpss.h>
 #include "cvi_comm.h"
-#ifdef CONFIG_ALIOS
-#include "cvi_tdl_log.hpp"
-#endif
 #include <inttypes.h>
 #include <math.h>
 #include <string.h>

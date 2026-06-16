@@ -16,6 +16,15 @@ ifeq (,$(LDFLAGS))
 $(error LDFLAGS is not set)
 endif
 
+REPO_ROOT := $(abspath $(COMMON_DIR)/..)
+
+ifneq (,$(TDL_LIB))
+LDFLAGS += -Wl,-rpath-link,$(TDL_LIB)
+endif
+ifneq (,$(SYS_LIB))
+LDFLAGS += -Wl,-rpath-link,$(SYS_LIB)
+endif
+
 ifeq ($(CHIP), CV181X)
 CFLAGS += -DCV181X -D__CV181X__
 LDFLAGS += -lcvi_ive
@@ -30,12 +39,12 @@ endif
 CFLAGS += -std=gnu11 -Wno-pointer-to-int-cast -fsigned-char -Wno-format-truncation -fdiagnostics-color=always -s -lpthread -latomic
 
 LDFLAGS += -lini -lsns_full -lsample -lisp -lvdec -lvenc -lawb -lae -laf -lcvi_bin -lcvi_bin_isp -lmisc -lisp_algo -lsys  -lvi -lvo -lvpss -lrgn -lgdc
-LDFLAGS += -lcvi_tdl
+LDFLAGS += -ltdl_core
 LDFLAGS += -lopencv_core -lopencv_imgproc -lopencv_imgcodecs
 LDFLAGS += -lcvikernel -lcvimath -lcviruntime
 LDFLAGS += -lcvi_rtsp
 
-COMMON_SRC = $(COMMON_DIR)/middleware_utils.c $(COMMON_DIR)/sample_utils.c
+COMMON_SRC = $(COMMON_DIR)/middleware_utils.c $(COMMON_DIR)/sample_utils.c $(COMMON_DIR)/tdl_v2_draw.c
 COMMON_OBJ = $(COMMON_SRC:.c=.o)
 
 SOURCE = $(wildcard *.c)
@@ -53,4 +62,3 @@ clean:
 	@rm -rf $(COMMON_OBJ)
 	@rm -rf $(OBJS)
 	@rm -rf $(TARGET)
-

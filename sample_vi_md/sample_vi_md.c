@@ -9,7 +9,8 @@
 #include <cvi_comm.h>
 #include <rtsp.h>
 #include <sample_comm.h>
-#include "cvi_tdl.h"
+#include "tdl_sdk.h"
+#include "tdl_v2_draw.h"
 
 #include <pthread.h>
 #include <signal.h>
@@ -21,20 +22,19 @@
 
 static volatile bool bExit = false;
 
-static cvtdl_object_t g_stObjMeta = {0};
+static TDLObject g_stObjMeta = {0};
 
 MUTEXAUTOLOCK_INIT(ResultMutex);
 
 typedef struct {
   SAMPLE_TDL_MW_CONTEXT *pstMWContext;
-  cvitdl_service_handle_t stServiceHandle;
 } SAMPLE_TDL_VENC_THREAD_ARG_S;
 
 typedef struct {
   CVI_U32 u32UpdateInterval;
   CVI_U8 u8Threshold;
   CVI_FLOAT fMinArea;
-  cvitdl_handle_t stTDLHandle;
+  TDLHandle stTDLHandle;
 } SAMPLE_TDL_TDL_THREAD_ARG_S;
 
 CVI_S32 SAMPLE_COMM_VPSS_Stop_MD(VPSS_GRP VpssGrp, CVI_BOOL *pabChnEnable) {
@@ -73,7 +73,7 @@ void *run_venc(void *args) {
   SAMPLE_TDL_VENC_THREAD_ARG_S *pstArgs = (SAMPLE_TDL_VENC_THREAD_ARG_S *)args;
   VIDEO_FRAME_INFO_S stFrame;
   CVI_S32 s32Ret;
-  cvtdl_object_t stObjMeta = {0};
+  TDLObject stObjMeta = {0};
 
   while (bExit == false) {
     s32Ret = CVI_VPSS_GetChnFrame(0, 0, &stFrame, 2000);
@@ -84,12 +84,11 @@ void *run_venc(void *args) {
 
     {
       MutexAutoLock(ResultMutex, lock);
-      CVI_TDL_CopyObjectMeta(&g_stObjMeta, &stObjMeta);
+      TDL_CopyObjectMeta(&g_stObjMeta, &stObjMeta);
     }
 
-    s32Ret = CVI_TDL_Service_ObjectDrawRect(pstArgs->stServiceHandle, &stObjMeta, &stFrame, false,
-                                            CVI_TDL_Service_GetDefaultBrush());
-    if (s32Ret != CVI_TDL_SUCCESS) {
+    s32Ret = SAMPLE_TDL_DrawObjectRect(&stObjMeta, &stFrame, false, SAMPLE_TDL_DefaultBrush());
+    if (s32Ret != CVI_SUCCESS) {
       CVI_VPSS_ReleaseChnFrame(0, 0, &stFrame);
       printf("Draw fame fail!, ret=%x\n", s32Ret);
       goto error;
@@ -103,7 +102,8 @@ void *run_venc(void *args) {
     }
 
   error:
-    CVI_TDL_Free(&stObjMeta);
+    TDL_ReleaseObjectMeta(&stObjMeta);
+    memset(&stObjMeta, 0, sizeof(TDLObject));
     CVI_VPSS_ReleaseChnFrame(0, 0, &stFrame);
     if (s32Ret != CVI_SUCCESS) {
       bExit = true;
@@ -118,12 +118,21 @@ void *run_tdl_thread(void *args) {
   SAMPLE_TDL_TDL_THREAD_ARG_S *pstTDLArgs = (SAMPLE_TDL_TDL_THREAD_ARG_S *)args;
 
   VIDEO_FRAME_INFO_S stFrame;
-  cvtdl_object_t stObjMeta = {0};
+  TDLObject stObjMeta = {0};
 
   CVI_S32 s32Ret;
   uint32_t frame_count = 0;
-  uint32_t update_interval = 100;
+  uint32_t update_interval = pstTDLArgs->u32UpdateInterval;
   int fail_counter = 0;
+  TDLObjectInfo roi_info = {0};
+  TDLObject roi = {0};
+  roi.size = 1;
+  roi.info = &roi_info;
+  roi.info[0].box.x1 = 0;
+  roi.info[0].box.y1 = 0;
+  roi.info[0].box.x2 = 512;
+  roi.info[0].box.y2 = 512;
+
   while (bExit == false) {
     s32Ret = CVI_VPSS_GetChnFrame(0, VPSS_CHN1, &stFrame, 2000);
 
@@ -140,51 +149,39 @@ void *run_tdl_thread(void *args) {
       goto get_frame_failed;
     }
 
-    if (frame_count % update_interval == 0) {
-      printf("Update background\n");
-      gettimeofday(&t0, NULL);
-      GOTO_IF_FAILED(CVI_TDL_Set_MotionDetection_Background(pstTDLArgs->stTDLHandle, &stFrame),
-                     s32Ret, inf_error);
-      gettimeofday(&t1, NULL);
-      elapsed = ((t1.tv_sec - t0.tv_sec) * 1000000 + t1.tv_usec - t0.tv_usec);
-      printf("Update background, time=%.2f ms\n", (float)elapsed / 1000.);
-      char sz_imgname[128];
-      sprintf(sz_imgname, "/mnt/data/admin1_data/alios_test/md/");
-      MDROI_t roi_s;
-      roi_s.num = 1;
-      roi_s.pnt[0].x1 = 0;
-      roi_s.pnt[0].y1 = 0;
-      roi_s.pnt[0].x2 = 512;
-      roi_s.pnt[0].y2 = 512;
-      int ret = CVI_TDL_Set_MotionDetection_ROI(pstTDLArgs->stTDLHandle, &roi_s);
-      printf("setroi ret:%d\n", ret);
-    }
-
     gettimeofday(&t0, NULL);
-    GOTO_IF_FAILED(CVI_TDL_MotionDetection(pstTDLArgs->stTDLHandle, &stFrame, &stObjMeta,
-                                           pstTDLArgs->u8Threshold, pstTDLArgs->fMinArea),
-                   s32Ret, inf_error);
+    TDLImage image = TDL_WrapFrame(&stFrame, false);
+    if (image == NULL) {
+      s32Ret = CVI_FAILURE;
+      printf("TDL_WrapFrame failed\n");
+      goto inf_error;
+    }
+    uint32_t current_update_interval = (frame_count == 0) ? 0 : update_interval;
+    s32Ret = TDL_MotionDetection(pstTDLArgs->stTDLHandle, image, image, &roi,
+                                 pstTDLArgs->u8Threshold, pstTDLArgs->fMinArea, &stObjMeta,
+                                 current_update_interval);
+    TDL_DestroyImage(image);
+    if (s32Ret != CVI_SUCCESS) {
+      printf("motion detect failed!, ret=%x\n", s32Ret);
+      goto inf_error;
+    }
     gettimeofday(&t1, NULL);
     elapsed = ((t1.tv_sec - t0.tv_sec) * 1000000 + t1.tv_usec - t0.tv_usec);
 
     frame_count++;
 
-    if (s32Ret != CVI_TDL_SUCCESS) {
-      printf("motion detect failed!, ret=%x\n", s32Ret);
-      goto inf_error;
-    }
-
     printf("detected objects: %d, time= %.2f ms\n", stObjMeta.size, (float)elapsed / 1000.);
 
     {
       MutexAutoLock(ResultMutex, lock);
-      CVI_TDL_CopyObjectMeta(&stObjMeta, &g_stObjMeta);
+      TDL_CopyObjectMeta(&stObjMeta, &g_stObjMeta);
     }
 
   inf_error:
     CVI_VPSS_ReleaseChnFrame(0, 1, &stFrame);
   get_frame_failed:
-    CVI_TDL_Free(&stObjMeta);
+    TDL_ReleaseObjectMeta(&stObjMeta);
+    memset(&stObjMeta, 0, sizeof(TDLObject));
     if (s32Ret != CVI_SUCCESS) {
       bExit = true;
     }
@@ -210,7 +207,7 @@ int main(int argc, char *argv[]) {
         "\tTHRESHOLD, threshold for motion detection [0-255].\n"
         "\tMIN_AREA, minimal pixel size of object.\n",
         argv[0]);
-    return CVI_TDL_FAILURE;
+    return CVI_FAILURE;
   }
 
   signal(SIGINT, SampleHandleSig);
@@ -310,21 +307,15 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  cvitdl_handle_t stTDLHandle = NULL;
-
-  // Create TDL handle and assign VPSS Grp1 Device 0 to TDL SDK
-  GOTO_IF_FAILED(CVI_TDL_CreateHandle2(&stTDLHandle, 1, 0), s32Ret, create_tdl_fail);
-
-  GOTO_IF_FAILED(CVI_TDL_SetVpssTimeout(stTDLHandle, 1000), s32Ret, setup_tdl_fail);
-
-  cvitdl_service_handle_t stServiceHandle = NULL;
-  GOTO_IF_FAILED(CVI_TDL_Service_CreateHandle(&stServiceHandle, stTDLHandle), s32Ret,
-                 create_service_fail);
+  TDLHandle stTDLHandle = TDL_CreateHandle(0);
+  if (stTDLHandle == NULL) {
+    s32Ret = CVI_FAILURE;
+    goto create_tdl_fail;
+  }
 
   pthread_t stVencThread, stTDLThread;
   SAMPLE_TDL_VENC_THREAD_ARG_S venc_args = {
       .pstMWContext = &stMWContext,
-      .stServiceHandle = stServiceHandle,
   };
 
   SAMPLE_TDL_TDL_THREAD_ARG_S ai_args = {
@@ -341,9 +332,7 @@ int main(int argc, char *argv[]) {
   pthread_join(stTDLThread, NULL);
 
 setup_tdl_fail:
-  CVI_TDL_Service_DestroyHandle(stServiceHandle);
-create_service_fail:
-  CVI_TDL_DestroyHandle(stTDLHandle);
+  TDL_DestroyHandle(stTDLHandle);
 create_tdl_fail:
   SAMPLE_TDL_Destroy_MW(&stMWContext);
 

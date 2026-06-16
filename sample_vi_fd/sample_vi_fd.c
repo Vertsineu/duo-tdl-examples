@@ -9,7 +9,8 @@
 #include <cvi_comm.h>
 #include <rtsp.h>
 #include <sample_comm.h>
-#include "cvi_tdl.h"
+#include "tdl_sdk.h"
+#include "tdl_v2_draw.h"
 
 #include <pthread.h>
 #include <signal.h>
@@ -20,7 +21,7 @@
 
 static volatile bool bExit = false;
 
-static cvtdl_face_t g_stFaceMeta = {0};
+static TDLFace g_stFaceMeta = {0};
 
 static uint32_t g_size = 0;
 
@@ -28,7 +29,6 @@ MUTEXAUTOLOCK_INIT(ResultMutex);
 
 typedef struct {
   SAMPLE_TDL_MW_CONTEXT *pstMWContext;
-  cvitdl_service_handle_t stServiceHandle;
 } SAMPLE_TDL_VENC_THREAD_ARG_S;
 
 void *run_venc(void *args) {
@@ -36,7 +36,7 @@ void *run_venc(void *args) {
   SAMPLE_TDL_VENC_THREAD_ARG_S *pstArgs = (SAMPLE_TDL_VENC_THREAD_ARG_S *)args;
   VIDEO_FRAME_INFO_S stFrame;
   CVI_S32 s32Ret;
-  cvtdl_face_t stFaceMeta = {0};
+  TDLFace stFaceMeta = {0};
 
   while (bExit == false) {
     s32Ret = CVI_VPSS_GetChnFrame(0, 0, &stFrame, 2000);
@@ -47,16 +47,16 @@ void *run_venc(void *args) {
 
     {
       MutexAutoLock(ResultMutex, lock);
-      memset(&stFaceMeta, 0, sizeof(cvtdl_face_t));
+      memset(&stFaceMeta, 0, sizeof(TDLFace));
       if (NULL != g_stFaceMeta.info) {
-        CVI_TDL_CopyFaceMeta(&g_stFaceMeta, &stFaceMeta);
+        TDL_CopyFaceMeta(&g_stFaceMeta, &stFaceMeta);
       }
-      CVI_TDL_Free(&g_stFaceMeta);
+      TDL_ReleaseFaceMeta(&g_stFaceMeta);
+      memset(&g_stFaceMeta, 0, sizeof(TDLFace));
     }
 
-    s32Ret = CVI_TDL_Service_FaceDrawRect(pstArgs->stServiceHandle, &stFaceMeta, &stFrame, false,
-                                          CVI_TDL_Service_GetDefaultBrush());
-    if (s32Ret != CVI_TDL_SUCCESS) {
+    s32Ret = SAMPLE_TDL_DrawFaceRect(&stFaceMeta, &stFrame, false, SAMPLE_TDL_DefaultBrush());
+    if (s32Ret != CVI_SUCCESS) {
       CVI_VPSS_ReleaseChnFrame(0, 0, &stFrame);
       printf("Draw fame fail!, ret=%x\n", s32Ret);
       goto error;
@@ -70,7 +70,8 @@ void *run_venc(void *args) {
     }
 
   error:
-    CVI_TDL_Free(&stFaceMeta);
+    TDL_ReleaseFaceMeta(&stFaceMeta);
+    memset(&stFaceMeta, 0, sizeof(TDLFace));
     CVI_VPSS_ReleaseChnFrame(0, 0, &stFrame);
     if (s32Ret != CVI_SUCCESS) {
       bExit = true;
@@ -82,10 +83,10 @@ void *run_venc(void *args) {
 
 void *run_tdl_thread(void *pHandle) {
   printf("Enter TDL thread\n");
-  cvitdl_handle_t pstTDLHandle = (cvitdl_handle_t)pHandle;
+  TDLHandle pstTDLHandle = (TDLHandle)pHandle;
 
   VIDEO_FRAME_INFO_S stFrame;
-  cvtdl_face_t stFaceMeta = {0};
+  TDLFace stFaceMeta = {0};
 
   CVI_S32 s32Ret;
   while (bExit == false) {
@@ -96,10 +97,16 @@ void *run_tdl_thread(void *pHandle) {
       goto get_frame_failed;
     }
 
-    memset(&stFaceMeta, 0, sizeof(cvtdl_face_t));
-    s32Ret = CVI_TDL_FaceDetection(pstTDLHandle, &stFrame, CVI_TDL_SUPPORTED_MODEL_SCRFDFACE,
-                                   &stFaceMeta);
-    if (s32Ret != CVI_TDL_SUCCESS) {
+    memset(&stFaceMeta, 0, sizeof(TDLFace));
+    TDLImage image = TDL_WrapFrame(&stFrame, false);
+    if (image == NULL) {
+      s32Ret = CVI_FAILURE;
+      printf("TDL_WrapFrame failed\n");
+      goto inf_error;
+    }
+    s32Ret = TDL_FaceDetection(pstTDLHandle, TDL_MODEL_SCRFD_DET_FACE, image, &stFaceMeta);
+    TDL_DestroyImage(image);
+    if (s32Ret != CVI_SUCCESS) {
       printf("inference failed!, ret=%x\n", s32Ret);
       goto inf_error;
     }
@@ -111,16 +118,17 @@ void *run_tdl_thread(void *pHandle) {
 
     {
       MutexAutoLock(ResultMutex, lock);
-      memset(&g_stFaceMeta, 0, sizeof(cvtdl_face_t));
+      memset(&g_stFaceMeta, 0, sizeof(TDLFace));
       if (NULL != stFaceMeta.info) {
-        CVI_TDL_CopyFaceMeta(&stFaceMeta, &g_stFaceMeta);
+        TDL_CopyFaceMeta(&stFaceMeta, &g_stFaceMeta);
       }
     }
 
   inf_error:
     CVI_VPSS_ReleaseChnFrame(0, 1, &stFrame);
   get_frame_failed:
-    CVI_TDL_Free(&stFaceMeta);
+    TDL_ReleaseFaceMeta(&stFaceMeta);
+    memset(&stFaceMeta, 0, sizeof(TDLFace));
     if (s32Ret != CVI_SUCCESS) {
       bExit = true;
     }
@@ -145,7 +153,7 @@ int main(int argc, char *argv[]) {
         "\nUsage: %s SCRFDFACE_MODEL_PATH.\n\n"
         "\tSCRFDFACE_MODEL_PATH, path to scrfdface model.\n",
         argv[0]);
-    return CVI_TDL_FAILURE;
+    return CVI_FAILURE;
   }
 
   signal(SIGINT, SampleHandleSig);
@@ -260,26 +268,20 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  cvitdl_handle_t stTDLHandle = NULL;
+  TDLHandle stTDLHandle = NULL;
 
-  // Create TDL handle and assign VPSS Grp1 Device 0 to TDL SDK
-  GOTO_IF_FAILED(CVI_TDL_CreateHandle2(&stTDLHandle, 1, 0), s32Ret, create_tdl_fail);
+  stTDLHandle = TDL_CreateHandle(0);
+  if (stTDLHandle == NULL) {
+    s32Ret = CVI_FAILURE;
+    goto create_tdl_fail;
+  }
 
-  GOTO_IF_FAILED(CVI_TDL_SetVBPool(stTDLHandle, 0, 2), s32Ret, create_service_fail);
-
-  CVI_TDL_SetVpssTimeout(stTDLHandle, 1000);
-
-  cvitdl_service_handle_t stServiceHandle = NULL;
-  GOTO_IF_FAILED(CVI_TDL_Service_CreateHandle(&stServiceHandle, stTDLHandle), s32Ret,
-                 create_service_fail);
-
-  GOTO_IF_FAILED(CVI_TDL_OpenModel(stTDLHandle, CVI_TDL_SUPPORTED_MODEL_SCRFDFACE, argv[1]), s32Ret,
+  GOTO_IF_FAILED(TDL_OpenModel(stTDLHandle, TDL_MODEL_SCRFD_DET_FACE, argv[1], NULL), s32Ret,
                  setup_tdl_fail);
 
   pthread_t stVencThread, stTDLThread;
   SAMPLE_TDL_VENC_THREAD_ARG_S args = {
       .pstMWContext = &stMWContext,
-      .stServiceHandle = stServiceHandle,
   };
 
   pthread_create(&stVencThread, NULL, run_venc, &args);
@@ -289,9 +291,8 @@ int main(int argc, char *argv[]) {
   pthread_join(stTDLThread, NULL);
 
 setup_tdl_fail:
-  CVI_TDL_Service_DestroyHandle(stServiceHandle);
-create_service_fail:
-  CVI_TDL_DestroyHandle(stTDLHandle);
+  TDL_CloseModel(stTDLHandle, TDL_MODEL_SCRFD_DET_FACE);
+  TDL_DestroyHandle(stTDLHandle);
 create_tdl_fail:
   SAMPLE_TDL_Destroy_MW(&stMWContext);
 
