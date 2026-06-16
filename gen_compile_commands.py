@@ -141,7 +141,6 @@ def build_env(chip: str, arch: str, debug: bool) -> dict[str, str]:
             "CFLAGS": " ".join(cflags),
             "LDFLAGS": " ".join(ldflags),
             "CHIP": chip,
-            "COMMON_DIR": str(ROOT / "common"),
         }
     )
     return env

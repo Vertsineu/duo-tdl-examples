@@ -159,6 +159,5 @@ export MILKV_CHIP="${milkv_chip}"
 export MILKV_ARCH="${milkv_arch}"
 export SYS_LIB="${sys_lib}"
 export TDL_LIB="${tdl_lib}"
-export COMMON_DIR="${script_dir}/common"
 
 print_info "Environment is ready."
