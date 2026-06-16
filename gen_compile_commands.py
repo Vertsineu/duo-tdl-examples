@@ -100,8 +100,8 @@ def build_env(chip: str, arch: str, debug: bool) -> dict[str, str]:
             "-D_LARGEFILE64_SOURCE",
             "-D_FILE_OFFSET_BITS=64",
         ]
-        toolchain_dir = host_tools / "gcc" / "riscv64-linux-musl-x86_64"
-        toolchain_prefix = toolchain_dir / "bin" / "riscv64-unknown-linux-musl-"
+        toolchain_dir = host_tools / "gcc" / "riscv64-linux-x86_64"
+        toolchain_prefix = toolchain_dir / "bin" / "riscv64-unknown-linux-gnu-"
         sysroot = toolchain_dir / "sysroot"
     else:
         arch_cflags = ["-march=armv8-a"]
@@ -117,10 +117,10 @@ def build_env(chip: str, arch: str, debug: bool) -> dict[str, str]:
             sysroot = candidate_sysroot
 
     if chip == "CV180X":
-        sys_lib = ROOT / "libs" / "system" / "musl_riscv64"
+        sys_lib = ROOT / "libs" / "system" / "glibc_riscv64"
         tdl_lib = ROOT / "libs" / "tdl" / "cv180x_riscv64"
     elif arch == "riscv64":
-        sys_lib = ROOT / "libs" / "system" / "musl_riscv64"
+        sys_lib = ROOT / "libs" / "system" / "glibc_riscv64"
         tdl_lib = ROOT / "libs" / "tdl" / "cv181x_riscv64"
     else:
         sys_lib = ROOT / "libs" / "system" / "glibc_arm64"
@@ -137,6 +137,7 @@ def build_env(chip: str, arch: str, debug: bool) -> dict[str, str]:
         {
             "TOOLCHAIN_PREFIX": str(toolchain_prefix),
             "CC": f"{toolchain_prefix}gcc",
+            "CXX": f"{toolchain_prefix}g++",
             "CFLAGS": " ".join(cflags),
             "LDFLAGS": " ".join(ldflags),
             "CHIP": chip,
@@ -146,9 +147,9 @@ def build_env(chip: str, arch: str, debug: bool) -> dict[str, str]:
     return env
 
 
-def compiler_include_paths(compiler: str) -> list[Path]:
+def compiler_include_paths(compiler: str, language: str) -> list[Path]:
     result = subprocess.run(
-        [compiler, "-v", "-E", "-x", "c", os.devnull],
+        [compiler, "-v", "-E", "-x", language, os.devnull],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -174,22 +175,32 @@ def compiler_include_paths(compiler: str) -> list[Path]:
     return paths
 
 
-def toolchain_include_flags(env: dict[str, str], disabled: bool) -> list[str]:
-    if disabled:
-        return []
-
-    compiler = env.get("CC")
-    if not compiler or not Path(compiler).is_file():
-        return []
-
+def make_isystem_flags(paths: list[Path]) -> list[str]:
     flags: list[str] = []
-    seen: set[Path] = set()
-    for include_path in compiler_include_paths(compiler):
-        if include_path in seen:
-            continue
-        seen.add(include_path)
+    for include_path in paths:
         flags.extend(["-isystem", str(include_path)])
     return flags
+
+
+def toolchain_include_flags(env: dict[str, str], disabled: bool) -> dict[str, list[str]]:
+    if disabled:
+        return {"c": [], "c++": []}
+
+    include_flags: dict[str, list[str]] = {}
+    for language, env_key in (("c", "CC"), ("c++", "CXX")):
+        compiler = env.get(env_key)
+        if not compiler or not Path(compiler).is_file():
+            include_flags[language] = []
+            continue
+        paths: list[Path] = []
+        seen: set[Path] = set()
+        for include_path in compiler_include_paths(compiler, language):
+            if include_path in seen:
+                continue
+            seen.add(include_path)
+            paths.append(include_path)
+        include_flags[language] = make_isystem_flags(paths)
+    return include_flags
 
 
 def find_example_dirs(selected: list[str]) -> list[Path]:
@@ -208,7 +219,7 @@ def find_example_dirs(selected: list[str]) -> list[Path]:
             raise SystemExit(f"missing Makefile: {directory}")
         if directory == ROOT:
             continue
-        if not any(directory.glob("*.c")):
+        if not any(directory.glob(pattern) for pattern in ("*.c", "*.cpp")):
             continue
         examples.append(directory)
     return examples
@@ -234,7 +245,12 @@ def is_compile_command(argv: list[str]) -> bool:
     if not argv or "-c" not in argv:
         return False
     compiler = Path(argv[0]).name
-    return compiler.endswith("gcc") or compiler in {"cc", "clang"}
+    return compiler.endswith(("gcc", "g++")) or compiler in {
+        "cc",
+        "c++",
+        "clang",
+        "clang++",
+    }
 
 
 def source_after_c(argv: list[str]) -> str | None:
@@ -244,6 +260,13 @@ def source_after_c(argv: list[str]) -> str | None:
         if token.startswith("-c") and len(token) > 2:
             return token[2:]
     return None
+
+
+def source_language(source: str) -> str:
+    suffix = Path(source).suffix
+    if suffix in {".cc", ".cpp", ".cxx", ".C"}:
+        return "c++"
+    return "c"
 
 
 def output_after_o(argv: list[str]) -> str | None:
@@ -313,7 +336,7 @@ def collect_entries(
     env: dict[str, str],
     verbose: bool,
     sanitize: bool,
-    extra_flags: list[str],
+    extra_flags: dict[str, list[str]],
 ) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
     seen: set[tuple[str, str]] = set()
@@ -337,7 +360,11 @@ def collect_entries(
                 continue
             if sanitize:
                 argv = sanitize_compile_argv(argv)
-            argv = append_flags_before_output(argv, extra_flags)
+
+            source = source_after_c(argv)
+            if source is None:
+                continue
+            argv = append_flags_before_output(argv, extra_flags[source_language(source)])
 
             entry = make_entry(example, argv)
             if entry is None:
